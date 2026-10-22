@@ -6,7 +6,7 @@ Requires macOS 13 or later, an internet connection, and a logged-in desktop sess
 
 ## Run a search
 
-Extract the release ZIP and open Terminal in the extracted folder:
+Download the [Mac development ZIP](https://github.com/acagamic/google-scholar-cli/releases/tag/v0.1.0-dev.1), extract it, and open Terminal in the extracted folder. This preview is not notarized and may trigger Gatekeeper warnings after download.
 
 ```sh
 ./scholar search 'attention is all you need' --limit 5
@@ -63,6 +63,8 @@ Diagnostics use stderr. JSON and CSV output use stdout.
 Building requires Apple’s Command Line Tools or Xcode. This is a developer requirement; recipients run the compiled executable.
 
 ```sh
+git clone https://github.com/acagamic/google-scholar-cli.git
+cd google-scholar-cli
 ./scripts/test.sh
 ./scripts/build.sh
 ```
