@@ -11,7 +11,6 @@ func scholarExtractionScript(limit: Int) -> String {
       const snapshot = (state, items, resultCount) => ({ state, items, resultCount });
       const hostname = location.hostname.toLowerCase();
       const pathname = location.pathname.toLowerCase();
-      const bodyText = normalize(document.body?.innerText);
       const resultCards = Array.from(document.querySelectorAll('.gs_r.gs_or.gs_scl'));
 
       const challengeMarkup = document.querySelector([
@@ -23,7 +22,9 @@ func scholarExtractionScript(limit: Int) -> String {
         'input[name="captcha"]',
       ].join(','));
       const challengeText = resultCards.length === 0
-        && /our systems have detected unusual traffic|检测到您的计算机网络中存在异常流量/i.test(bodyText);
+        && /our systems have detected unusual traffic|检测到您的计算机网络中存在异常流量/i.test(
+          normalize(document.body?.innerText),
+        );
       if (pathname === '/sorry' || pathname.startsWith('/sorry/') || challengeMarkup || challengeText) {
         return JSON.stringify(snapshot('challenge', [], 0));
       }

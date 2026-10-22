@@ -11,7 +11,6 @@ final class ScholarBrowser: NSObject, NSWindowDelegate, WKNavigationDelegate {
     private var suppliedConfiguration: WKWebViewConfiguration?
     private let diagnosticHandler: DiagnosticHandler
 
-    private var application: NSApplication?
     private var window: NSWindow?
     private var webView: WKWebView?
     private var deadlineTimer: Timer?
@@ -66,7 +65,7 @@ final class ScholarBrowser: NSObject, NSWindowDelegate, WKNavigationDelegate {
         let timeoutNanoseconds = UInt64(options.timeout * 1_000_000_000)
         deadlineUptime = startUptime.addingReportingOverflow(timeoutNanoseconds).partialValue
 
-        application = NSApplication.shared
+        let application = NSApplication.shared
         let configuration = suppliedConfiguration ?? WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
 
@@ -91,7 +90,7 @@ final class ScholarBrowser: NSObject, NSWindowDelegate, WKNavigationDelegate {
         if options.headed {
             createdWindow.center()
             createdWindow.makeKeyAndOrderFront(nil)
-            application?.activate(ignoringOtherApps: true)
+            application.activate(ignoringOtherApps: true)
         } else {
             createdWindow.orderOut(nil)
         }
@@ -360,7 +359,6 @@ final class ScholarBrowser: NSObject, NSWindowDelegate, WKNavigationDelegate {
         window?.close()
         webView = nil
         window = nil
-        application = nil
         suppliedConfiguration = nil
 
         callback?(result)

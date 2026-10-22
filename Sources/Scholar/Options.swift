@@ -144,10 +144,6 @@ func parseArguments(_ args: [String]) throws -> CLIAction {
     if jsonShortcut, let explicitFormat, explicitFormat != .json {
         throw argumentFailure("--json cannot be combined with a non-JSON --format value.")
     }
-    guard isValidLanguageCode(language) else {
-        throw argumentFailure("Language must be a valid language code, such as en or fr-CA.")
-    }
-
     let options = SearchOptions(
         query: query,
         limit: limit,
