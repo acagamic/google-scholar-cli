@@ -1,0 +1,10 @@
+google-scholar-cli
+
+This product contains code adapted from OpenCLI 2.0.2.
+https://github.com/jackwener/opencli
+Copyright 2025 jackwener
+
+Adapted source: clis/google-scholar/search.js
+Source SHA-256: 5513958d5e8f9d03ff1760ceb8c21130006fed7b34fa08efe6cb0fe8edb41468
+
+OpenCLI and this adaptation are licensed under the Apache License 2.0.
