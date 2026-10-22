@@ -11,166 +11,95 @@ execution: code
 
 ## Goal capsule
 
-Researchers can search Google Scholar from a terminal through a separately installable `scholar` command.
+Mac users can unzip one archive and run `scholar search` from Terminal. The executable contains both Apple Silicon and Intel code and uses macOS frameworks.
 
-Means: adapt the OpenCLI search parser and use an independent browser runtime (KTD1).
-Authority: the user request and project instructions govern this plan. Implement locally, verify the package, and report the result. Publishing is outside this request.
-Stop when required inputs or service access prevent further verification; preserve the completed work and report the specific limit.
+Means: adapt the OpenCLI parser and use Swift with WebKit. The user’s request for minimal dependencies and Mac sharing replaces the earlier Node and Playwright design.
+Authority: implement, test, and package locally. Public publication and Apple account changes are outside this request.
+Stop a public release if signing credentials or service access prevent its verification. Preserve the working artifact and report the specific limit.
 
 ## Product contract
 
-### Summary
-
-Create `google-scholar-cli` under Software. Package Google Scholar search as a Node CLI with browser support and structured output.
-
-### Problem frame
-
-The existing search command belongs to the larger OpenCLI application. The user wants to use and maintain Scholar search as its own application.
-
 ### Requirements
 
-#### Command and output
-
-- R1. Provide `scholar search <query>`, help, and version through an installable npm package without an OpenCLI runtime dependency.
-- R2. Accept a nonblank query and an integer `--limit` from 1 through 20, default 10. Return at most that many results from one Scholar page.
-- R3. Preserve the fields `rank`, `title`, `authors`, `source`, `year`, `cited`, and `url`. Rank is numeric; the other fields are strings, matching the source command.
-- R4. Support table, JSON, and CSV output via `--format` and `-f`, with `--json` as a shortcut. JSON is an array; CSV has a header. Machine output contains no progress messages.
-
-#### Browser and failure behaviour
-
-- R5. Use a dedicated persistent browser profile. Provide `--headed`, `--browser chromium|chrome`, `--profile`, `--lang`, and `--timeout` in milliseconds; default to Chromium, headless, English, and 30000 ms.
-- R6. A recognised empty search succeeds with an empty result set. CAPTCHA, consent pages, rate limits, network failure, and unknown markup return a nonzero exit with useful stderr text.
-- R7. Close the owned browser on success, failure, and interruption. A headed verification page can wait for manual completion within the configured timeout; headless verification returns an error immediately.
-- R8. Include setup instructions, source attribution, and licence notices. Tests must work without live Google access, and a live smoke check must record its observed outcome.
+- R1. Provide a universal macOS executable named `scholar`, with `search <query>`, help, and version. Recipients need macOS 13 or later and a logged-in desktop session. They need no package manager, language runtime, browser download, API key, or OpenCLI installation.
+- R2. Accept a nonblank query and `--limit` from 1 through 20, default 10. Fetch one Scholar search page and return at most the requested count.
+- R3. Preserve `rank`, `title`, `authors`, `source`, `year`, `cited`, and `url`. Rank is numeric; the other fields are strings. Include citation-only records, grouped citation counts, and defined missing values.
+- R4. Provide table, JSON, and CSV through `--format`/`-f`, with `--json` as a shortcut. JSON is an array; CSV has a header. Progress and errors use stderr.
+- R5. Use the system WebKit engine with an in-memory session owned by this invocation. Support `--headed`, `--lang`, and `--timeout` in milliseconds. Defaults are a hidden window, English, and 30000 ms. Never read personal browser profiles or copy their cookies.
+- R6. Recognised empty results succeed. CAPTCHA, consent, rate limits, network errors, and unknown pages have nonzero exits. Headed mode allows manual verification within the original deadline.
+- R7. Close owned windows and stop navigation on success, failure, deadline, window closure, or interruption. Do not retry network requests automatically.
+- R8. Include build instructions, a release archive, checksums, attribution, and licence notices. Test without live Google access and record the observed live smoke result separately.
+- R9. Provide a release procedure for Developer ID signing and Apple notarization. Without those credentials, label the archive as a development build and report the missing release prerequisite. Do not claim that an ad hoc signature avoids Gatekeeper warnings.
 
 ### Acceptance examples
 
-- AE1. Given a results page with 20 valid papers, a search with `--limit 20 -f json` returns 20 ordered records with the R3 fields. Covers R2, R3, R4.
-- AE2. Given an explicit no-results page, JSON output is `[]` with success. A CAPTCHA page instead has a nonzero exit and empty stdout. Covers R6.
-- AE3. After a headed user completes verification within the deadline, the search can extract results. Timeout and Ctrl-C close the application-owned browser. Covers R5, R7.
+- AE1. An extracted archive runs `./scholar --help` without Node, Python, Homebrew, or downloaded libraries. Covers R1 and R8.
+- AE2. A fixture containing 20 valid papers produces 20 ordered JSON records with `--limit 20`. Covers R2 through R4.
+- AE3. An explicit empty page produces `[]`; a challenge in hidden mode produces empty stdout and an error. Covers R6.
+- AE4. A headed challenge that changes to results completes before the deadline. Timeout and Ctrl-C release the owned window. Covers R5 and R7.
 
 ### Scope boundaries
 
-Search is the supported Scholar operation. Author profiles, citation export, PDF downloads, bulk crawling, automatic retries, and CAPTCHA solvers are excluded. They are separate capabilities and are unnecessary for the requested extraction.
+Search is the supported operation. Citation export, author profiles, PDF downloads, pagination, bulk crawling, CAPTCHA solvers, and automatic retries are excluded. The requested limit is a maximum, not a guarantee of the number Google returns.
 
-The limit is a maximum, not a guarantee that Google returns that many papers. Pagination is excluded because the source command reads one page.
+The CLI requires a desktop session because it uses AppKit and WebKit. SSH-only and Linux execution are outside this Mac release.
 
 ## Planning contract
 
 ### Technical decisions
 
-- KTD1. Use Node.js ESM, Commander, and Playwright. Playwright replaces OpenCLI browser management without copying its daemon or extension. Pin dependencies in the lockfile. Supports R1, R5.
-- KTD2. Default to Playwright-managed Chromium and require an explicit Chrome choice. Store each browser type in a separate app profile beneath the user cache directory. The Chrome option must never attach to the personal default profile. Supports R5, R7.
-- KTD3. Separate DOM extraction from browser control. A browser-evaluated function returns a classified page snapshot and records; HTML fixtures exercise this function in a real Chromium page. Supports R3, R6.
-- KTD4. Encode query parameters with URLSearchParams and send `num=<limit>` and `hl=<lang>`. The original adapter truncates records but omits the requested count from its URL. Supports R2.
-- KTD5. Treat page recognition as evidence: results, explicit empty state, verification, consent, or unknown. Do not convert missing selectors or timeouts into a successful empty list. Support unlinked citation titles with an empty URL and grouped citation counts. Supports R3, R6.
-- KTD6. Use exit codes 0 for success, 2 for invalid arguments, 3 for browser setup/profile errors, 4 for service access or network failure, 5 for unreadable results, and 130 for interruption. Diagnostics use stderr. Supports R4, R6, R7.
+- KTD1. Use Swift and macOS Foundation, AppKit, and WebKit. There are zero third-party dependencies. Build arm64 and x86_64 slices with the macOS 13 deployment target, combine them with `lipo`, and inspect their dynamic library links. Supports R1 and R8.
+- KTD2. Use `WKWebsiteDataStore.nonPersistent()`. Cookies can support manual verification in the same invocation and are not saved between runs. Named persistent profiles require macOS 14 and are unnecessary for this request. Supports R5.
+- KTD3. Keep extraction in a self-contained JavaScript function embedded in the executable. Tests run it in WebKit against the existing synthetic HTML fixtures. A classified snapshot distinguishes results, empty, challenge, consent, and unknown. Missing selectors never mean successful empty output. Supports R3 and R6.
+- KTD4. Construct URLs with URLComponents/URLQueryItem, including `q`, `num`, and `hl`. Parse arguments with Foundation only. JSONEncoder and a small CSV formatter supply machine output; table cells remove terminal controls. Supports R2 and R4.
+- KTD5. Create and retain NSApplication, NSWindow, and WKWebView on the main thread. Use a monotonic total deadline and an idempotent finaliser. Signal callbacks dispatch cleanup to the main thread. Clear delegates, stop loading, close the window, and release WebKit references before process exit. Supports R5 through R7.
+- KTD6. Exit codes: 0 success, 2 arguments, 3 local browser/session failure, 4 service/network failure, 5 unreadable page, 130 interruption. Diagnostics go to stderr and include recovery where available. Supports R4, R6, and R7.
+- KTD7. Build a ZIP with the universal executable, README, LICENSE, and NOTICE, plus a SHA-256 checksum. Ad hoc sign local builds. A separate release procedure uses a Developer ID certificate and notarization. Public release remains blocked without those credentials. Supports R8 and R9.
 
-### Assumptions
+### Risks and evidence
 
-Standalone means independent of OpenCLI and its extension. Node.js and a browser remain installation prerequisites. English is the initial search language; `--lang zh-CN` restores the source language.
+A direct HTTP probe returned 403 on this network. WebKit retains the browser workflow without an added browser installation. It cannot guarantee Google access. Google controls Scholar markup and may restrict automation; report the observed outcome without bypassing verification.
 
-The command is used interactively or in small scripts. No request scheduling or bulk search is planned.
+Only a local development signing identity is available. It cannot satisfy Apple’s public Developer ID requirement. macOS 13 compatibility and Intel execution require distinct evidence; cross-compilation alone is not a test on either platform.
 
-### Technical design
+The source is OpenCLI 2.0.2, `clis/google-scholar/search.js`, under Apache-2.0. Preserve its attribution and licence. The user’s examples inform the `--json` shortcut and separation of search from output; no code from them is copied.
 
-```mermaid
-flowchart TB
-  CLI[Command arguments] --> Validate[Validate arguments]
-  Validate --> Browser[Owned persistent browser]
-  Browser --> Page[Scholar page]
-  Page --> Extract[Classify and extract]
-  Extract --> Output[Table JSON or CSV]
-  Extract --> Error[Diagnostic and exit code]
-  Output --> Close[Close browser]
-  Error --> Close
-```
-
-```mermaid
-stateDiagram-v2
-  [*] --> Opening
-  Opening --> Loading
-  Loading --> Results
-  Loading --> Empty
-  Loading --> Verification
-  Loading --> Failure
-  Verification --> Loading: Manual completion in headed mode
-  Verification --> Failure: Headless or deadline
-  Results --> Closed
-  Empty --> Closed
-  Failure --> Closed
-  Closed --> [*]
-```
-
-### Risks and sources
-
-Google controls the page markup and may block browser automation. Tests can prove local behaviour while live availability remains outside the application's control. Google Scholar help states that bulk access is unavailable and automated software must respect its robots.txt. Document this limit without claiming that a browser session guarantees access.
-
-The installed source is OpenCLI 2.0.2, `clis/google-scholar/search.js`, licensed Apache-2.0. Preserve attribution for the adapted parser and include the licence.
-
-The user supplied these examples during planning. `gscholar` demonstrates citation lookup; `scholarly_publications` separates fetching from JSON output. The Scholar skill uses a `--json` shortcut and keeps metadata tied to fetched records. R4 adopts that shortcut. Citation and author operations remain outside this search extraction. No code from these examples is copied.
-
+- [OpenCLI](https://github.com/jackwener/opencli)
 - [gscholar](https://github.com/venthur/gscholar)
 - [scholarly_publications](https://github.com/ezefranca/scholarly_publications)
 - [Scholar skill example](https://mcpmarket.com/tools/skills/google-scholar-search)
-- [OpenCLI repository](https://github.com/jackwener/opencli)
-- [Playwright persistent browser context](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-persistent-context)
-- [Playwright browser installation](https://playwright.dev/docs/browsers)
+- [WebKit data stores](https://developer.apple.com/documentation/webkit/wkwebsitedatastore)
+- [WebKit profile support](https://webkit.org/blog/14423/building-profiles-with-new-webkit-api/)
+- [Apple notarization requirements](https://developer.apple.com/documentation/security/resolving-common-notarization-issues)
 - [Google Scholar help](https://scholar.google.com/intl/en/scholar/help.html)
 
 ## Implementation units
 
-### U1. Package and extract results
+### U1. Native core and extraction
 
-Goal: establish the package and parse Scholar pages. Requirements: R1, R2, R3, R6, R8. Dependencies: none.
-Files: `package.json`, `package-lock.json`, `.gitignore`, `LICENSE`, `NOTICE`, `src/parser.js`, `src/errors.js`, `test/parser.test.js`, `test/fixtures/*.html`.
-Approach: implement KTD1, KTD3, and KTD5 with explicit page states and the existing result field contract. Characterise the parser through fixture-driven browser tests.
-Test scenarios:
-- Standard and citation-only cards retain titles, metadata, and contiguous ranks.
-- Grouped citation counts and absent optional metadata produce defined string values.
-- Explicit empty, CAPTCHA, consent, and changed markup remain distinct.
-- Unicode queries and encoded punctuation retain their meaning when constructing a search URL.
-Verification: deterministic parser fixtures pass in managed Chromium; package metadata has no OpenCLI dependency.
+Goal: replace the Node prototype with Swift models, arguments, output, and embedded extraction. Covers R1 through R4 and R6. Dependencies: none.
+Files: `Sources/Scholar/Models.swift`, `Options.swift`, `Output.swift`, `Parser.swift`, `Tests/CoreTests.swift`, `test/fixtures/*.html`, and native build/test configuration.
+Approach: preserve useful parser cases, remove Node dependencies, and compile with system frameworks only. Tests cover Unicode query encoding, limits, missing metadata, grouped citations, unlinked records, page states, CSV escaping, terminal controls, and argument errors.
+Verification: native core tests pass. The build has no third-party dependency or external resource requirement.
 
-### U2. Own the browser search lifecycle
+### U2. WebKit lifecycle and executable
 
-Goal: search through an independent browser and release it. Requirements: R2, R5, R6, R7. Dependencies: U1.
-Files: `src/search.js`, `test/search.test.js`.
-Approach: implement KTD2, KTD4, and KTD6. Use one total bounded wait for navigation and page recognition, and allow manual verification only when headed. Browser creation belongs to this module; close it in all terminal paths.
-Test scenarios:
-- A real browser with intercepted Scholar responses returns records and uses the requested query/count/language.
-- Explicit empty, challenge, consent, HTTP 429, timeout, and changed markup have distinct outcomes.
-- Browser startup failure and concurrent profile use report actionable errors.
-- Cancellation during launch or search eventually closes every created browser context.
-Verification: browser integration tests pass without Google access, and no owned process remains after failure.
+Goal: load and classify the page with bounded lifetime. Covers R1, R5, R6, and R7. Depends on U1.
+Files: `Sources/Scholar/Browser.swift`, `Sources/Scholar/main.swift`, `Tests/BrowserTests.swift`, and test runner configuration.
+Approach: implement KTD2 and KTD5. Poll the loaded document without issuing another request. Allow headed verification, reject hidden verification, and clean up on every terminal path.
+Verification: real WebKit fixtures prove results, empty, challenge, consent, unknown, timeout, navigation failure, and cancellation. The executable proves help/version without browser creation, stderr-only errors, and clean pipe closure.
 
-### U3. Provide the command and formats
+### U3. Build and share
 
-Goal: expose the search through the installed executable. Requirements: R1, R2, R4, R5, R6, R7. Dependencies: U2.
-Files: `bin/scholar.js`, `src/cli.js`, `src/output.js`, `test/cli.test.js`, `test/output.test.js`.
-Approach: connect the command to the search module and map structured errors to KTD6. Escape CSV cells and remove terminal control sequences from human-readable output. Keep machine output lossless.
-Test scenarios:
-- Help/version do not launch a browser; invalid limits, blank queries, or formats fail before launch.
-- JSON parses and CSV preserves quotes, commas, and line breaks.
-- The executable produces data-only stdout on success and stderr-only diagnostics on failure.
-- A broken output pipe exits without an uncaught stack trace.
-Verification: subprocess checks exercise the real bin entry point and formatter tests prove output contracts.
-
-### U4. Document, package, and verify
-
-Goal: make the package usable from another directory. Requirements: R1, R8. Dependencies: U3.
-Files: `README.md`, `docs/verification.md`.
-Approach: document setup, browser installation, formats, profile ownership, and error recovery. Verify an npm tarball in a fresh temporary directory. Record live search evidence separately from deterministic tests.
-Test scenarios:
-- A fresh package installation exposes `scholar --help` outside the source directory.
-- The packed archive contains runtime code and licence notices and excludes browser profile data.
-- One live search returns records or reports the observed service restriction with its defined exit code.
-Verification: the documented setup works; all required checks pass or their external limit is recorded with evidence.
+Goal: produce the archive and document recipient steps. Covers R1, R8, and R9. Depends on U2.
+Files: `scripts/build.sh`, `scripts/release.sh`, `README.md`, `docs/verification.md`, `LICENSE`, and `NOTICE`.
+Approach: compile each architecture, combine, sign locally, and package only runtime artifacts and notices. Add an opt-in Developer ID signing/notarization procedure that fails before publication if credentials are missing.
+Verification: inspect `lipo -archs`, `otool -L`, deployment targets, signature, archive contents, and checksum. Extract into a temporary directory and run help/version with a minimal PATH. Run the Intel slice when the host supports it. Record hardware and OS limits. Run one bounded live WebKit search.
 
 ## Verification contract
 
-Run `npm test` for deterministic unit and browser integration coverage. Run `npm pack --dry-run` to inspect the archive, then run `npm pack`. Install the produced tarball in a temporary directory and exercise its executable. Run one bounded live Scholar search. Read the final help text and README and run the project writing checker on authored prose. A live block is reported as a limitation, never as a passed live search.
+Compile with warnings treated as errors where SDK compatibility permits. Run all native tests, then package and test the extracted binary. Inspect both architectures and system-only dynamic links. Record live access separately from fixture correctness. Run the writing checker on authored documentation. Obtain a clean-context advisor review of the verified working tree.
 
 ## Definition of done
 
-The `scholar` command runs independently of OpenCLI. U1 through U4 satisfy their verification criteria, and the package includes setup instructions and source notices. Remove temporary experiments from the project. An independent advisor must review the verified working tree before completion is reported.
+The native CLI and local development archive work without recipient dependencies. All available checks pass and untested platform claims are identified. A trusted public release requires Developer ID signing and notarization; if unavailable, the release script and precise prerequisite are delivered with the local build.
