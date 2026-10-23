@@ -9,7 +9,7 @@ dist_directory="$repository_root/dist"
 usage() {
   print "Usage: SIGNING_IDENTITY='Developer ID Application: ...' NOTARY_PROFILE='keychain profile' ./scripts/release.sh"
   print ""
-  print "Build, sign, notarize, and create the Scholar universal macOS archive."
+  print "Build, sign, notarize, and create the Scholar CLI and skill archives."
   print "SIGNING_IDENTITY must name an installed Developer ID Application certificate."
   print "NOTARY_PROFILE must name an existing xcrun notarytool keychain profile."
   print "A raw CLI binary cannot carry a stapled ticket. A notarized ZIP requires an online Gatekeeper lookup."
@@ -65,12 +65,16 @@ if [[ -z "$version" || "$version" == *[![:alnum:]._-]* ]]; then
 fi
 
 staging_directory=$(/usr/bin/mktemp -d "$build_directory/release.XXXXXX")
-package_directory="$staging_directory/scholar-$version-macos-universal"
 staged_archive="$staging_directory/scholar-$version-macos-universal.zip"
 staged_checksum="$staged_archive.sha256"
-notary_result="$staging_directory/notary-result.plist"
+staged_skill_archive="$staging_directory/scholar-search-$version-macos-universal.zip"
+staged_skill_checksum="$staged_skill_archive.sha256"
+cli_notary_result="$staging_directory/cli-notary-result.plist"
+skill_notary_result="$staging_directory/skill-notary-result.plist"
 public_archive="$dist_directory/scholar-$version-macos-universal.zip"
 public_checksum="$public_archive.sha256"
+public_skill_archive="$dist_directory/scholar-search-$version-macos-universal.zip"
+public_skill_checksum="$public_skill_archive.sha256"
 
 cleanup() {
   local exit_status=$?
@@ -82,40 +86,47 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-mkdir -p "$package_directory"
-/usr/bin/ditto "$universal_binary" "$package_directory/scholar"
-/usr/bin/ditto "$repository_root/README.md" "$package_directory/README.md"
-/usr/bin/ditto "$repository_root/LICENSE" "$package_directory/LICENSE"
-/usr/bin/ditto "$repository_root/NOTICE" "$package_directory/NOTICE"
-/bin/chmod 755 "$package_directory/scholar"
+/usr/bin/codesign --force --sign "$signing_identity" --options runtime --timestamp "$universal_binary"
+/usr/bin/codesign --verify --strict "$universal_binary"
 
-/usr/bin/codesign --force --sign "$signing_identity" --options runtime --timestamp "$package_directory/scholar"
-/usr/bin/codesign --verify --strict "$package_directory/scholar"
-/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$package_directory" "$staged_archive"
-(
-  cd "$staging_directory"
-  /usr/bin/shasum -a 256 "$(basename "$staged_archive")" > "$(basename "$staged_checksum")"
-)
+"$script_directory/package.sh" \
+  --repository-root "$repository_root" \
+  --binary "$universal_binary" \
+  --output-directory "$staging_directory" \
+  --version "$version"
 
-print "Submitting notarization request..."
-/usr/bin/xcrun notarytool submit "$staged_archive" \
-  --keychain-profile "$notary_profile" \
-  --wait \
-  --output-format plist > "$notary_result"
+submit_for_notarization() {
+  local archive=$1
+  local result_file=$2
 
-notary_status=$(/usr/bin/plutil -extract status raw -o - "$notary_result" 2>/dev/null) || {
-  print -u2 "Notarization response did not contain a status."
-  exit 1
+  print "Submitting ${archive:t} for notarization..."
+  /usr/bin/xcrun notarytool submit "$archive" \
+    --keychain-profile "$notary_profile" \
+    --wait \
+    --output-format plist > "$result_file"
+
+  local notary_status
+  notary_status=$(/usr/bin/plutil -extract status raw -o - "$result_file" 2>/dev/null) || {
+    print -u2 "Notarization response for ${archive:t} did not contain a status."
+    return 1
+  }
+  if [[ "$notary_status" != "Accepted" ]]; then
+    print -u2 "Notarization status for ${archive:t}: $notary_status"
+    return 1
+  fi
 }
-if [[ "$notary_status" != "Accepted" ]]; then
-  print -u2 "Notarization status: $notary_status"
-  exit 1
-fi
+
+submit_for_notarization "$staged_archive" "$cli_notary_result"
+submit_for_notarization "$staged_skill_archive" "$skill_notary_result"
 
 /bin/mv "$staged_archive" "$public_archive"
 /bin/mv "$staged_checksum" "$public_checksum"
+/bin/mv "$staged_skill_archive" "$public_skill_archive"
+/bin/mv "$staged_skill_checksum" "$public_skill_checksum"
 
 print "Notarization status: Accepted"
 print "Archive: $public_archive"
 print "Checksum: $public_checksum"
+print "Skill archive: $public_skill_archive"
+print "Skill checksum: $public_skill_checksum"
 print "A raw CLI binary cannot carry a stapled ticket. A notarized ZIP requires an online Gatekeeper lookup."

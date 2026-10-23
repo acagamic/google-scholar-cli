@@ -1,0 +1,7 @@
+interface:
+  display_name: "Scholar Search"
+  short_description: "Search Google Scholar and cite paper results"
+  default_prompt: "Use $scholar-search to find papers on my topic and summarise the results with links."
+
+policy:
+  allow_implicit_invocation: true

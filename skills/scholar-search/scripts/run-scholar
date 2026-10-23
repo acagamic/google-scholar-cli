@@ -1,0 +1,38 @@
+#!/bin/sh
+
+case "$0" in
+    */*) script_parent=${0%/*} ;;
+    *) script_parent=. ;;
+esac
+
+script_dir=$(CDPATH= cd -- "$script_parent" && pwd -P) || {
+    printf '%s\n' 'Could not locate the scholar launcher directory.' >&2
+    exit 127
+}
+
+candidate=
+
+if [ "${SCHOLAR_BIN+x}" = x ]; then
+    if [ -f "$SCHOLAR_BIN" ] && [ -x "$SCHOLAR_BIN" ]; then
+        candidate=$SCHOLAR_BIN
+    else
+        printf 'SCHOLAR_BIN is not an executable file: %s\n' "$SCHOLAR_BIN" >&2
+        exit 127
+    fi
+elif [ -f "$script_dir/../bin/scholar" ] && [ -x "$script_dir/../bin/scholar" ]; then
+    candidate=$script_dir/../bin/scholar
+else
+    path_candidate=$(command -v scholar 2>/dev/null) || path_candidate=
+    if [ -n "$path_candidate" ] && [ -f "$path_candidate" ] && [ -x "$path_candidate" ]; then
+        candidate=$path_candidate
+    elif [ -f "$script_dir/../../../dist/scholar" ] && [ -x "$script_dir/../../../dist/scholar" ]; then
+        candidate=$script_dir/../../../dist/scholar
+    fi
+fi
+
+if [ -z "$candidate" ]; then
+    printf '%s\n' 'Could not find the scholar executable. Set SCHOLAR_BIN or add scholar to PATH.' >&2
+    exit 127
+fi
+
+exec "$candidate" "$@"

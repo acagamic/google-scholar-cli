@@ -57,11 +57,14 @@ if [[ -z "$version" || "$version" == *[![:alnum:]._-]* ]]; then
 fi
 
 staging_directory=$(/usr/bin/mktemp -d "$build_directory/package.XXXXXX")
-package_directory="$staging_directory/scholar-$version-macos-universal-dev"
 staged_archive="$staging_directory/scholar-$version-macos-universal-dev.zip"
 staged_checksum="$staged_archive.sha256"
+staged_skill_archive="$staging_directory/scholar-search-$version-macos-universal-dev.zip"
+staged_skill_checksum="$staged_skill_archive.sha256"
 archive_path="$dist_directory/scholar-$version-macos-universal-dev.zip"
 checksum_path="$archive_path.sha256"
+skill_archive_path="$dist_directory/scholar-search-$version-macos-universal-dev.zip"
+skill_checksum_path="$skill_archive_path.sha256"
 
 cleanup() {
   local exit_status=$?
@@ -73,22 +76,20 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-mkdir -p "$package_directory"
-/usr/bin/ditto "$universal_binary" "$package_directory/scholar"
-/usr/bin/ditto "$repository_root/README.md" "$package_directory/README.md"
-/usr/bin/ditto "$repository_root/LICENSE" "$package_directory/LICENSE"
-/usr/bin/ditto "$repository_root/NOTICE" "$package_directory/NOTICE"
-/bin/chmod 755 "$package_directory/scholar"
-
-/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$package_directory" "$staged_archive"
-(
-  cd "$staging_directory"
-  /usr/bin/shasum -a 256 "$(basename "$staged_archive")" > "$(basename "$staged_checksum")"
-)
+"$script_directory/package.sh" \
+  --repository-root "$repository_root" \
+  --binary "$universal_binary" \
+  --output-directory "$staging_directory" \
+  --version "$version" \
+  --development
 /bin/mv "$staged_archive" "$archive_path"
 /bin/mv "$staged_checksum" "$checksum_path"
+/bin/mv "$staged_skill_archive" "$skill_archive_path"
+/bin/mv "$staged_skill_checksum" "$skill_checksum_path"
 
 print "Built $universal_binary ($architecture_list)"
 print "Ad hoc signature verified"
 print "Archive: $archive_path"
 print "Checksum: $checksum_path"
+print "Skill archive: $skill_archive_path"
+print "Skill checksum: $skill_checksum_path"
