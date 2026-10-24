@@ -21,7 +21,7 @@ Use JSON in scripts or CSV for a spreadsheet:
 
 Run `./scholar --help` for all options. Put the executable in a directory on your PATH to use `scholar` from any folder.
 
-The v0.1.0-dev.2 packaging release keeps CLI version 0.1.0. During its current validation, the core suite passed 22 of 23 tests before the final test exceeded the harness time limit. The browser suite passed eight of 17 tests before its timeout. A direct live search exits with code 3 after the WebKit content process exits unexpectedly. These WebKit results existed before the packaging changes.
+The v0.1.0-dev.2 packaging release keeps CLI version 0.1.0. Test results for each release are in `docs/verification.md`.
 
 From a source checkout, the executable is at `./dist/scholar` after a build. Use the relative path if your shell reports `scholar: command not found`:
 
@@ -74,12 +74,44 @@ The first named form is for Codex. The second is for Claude Code. See the [Claud
 
 The skill returns a short source summary with paper links by default. Ask for JSON or CSV when you need structured output. Its launcher resolves the bundled executable from its own folder, so it works from any current directory. Set `SCHOLAR_BIN` to an executable path only when you want the launcher to use another compatible `scholar` build.
 
-## Google verification
+## If a search fails
 
-If Google asks for verification, rerun with a visible window and a longer timeout:
+Every failed search prints one sentence that says where the problem is, then numbered steps. Commands in those steps start with `scholar`. If the executable is not on your PATH, type `./scholar` instead.
+
+Check this Mac's browser engine without contacting Google:
 
 ```sh
-./scholar search 'attention is all you need' --headed --timeout 120000
+./scholar doctor
+```
+
+On a working Mac it prints a pass and exits 0. Otherwise it prints steps, your macOS version and the newest WebKit crash report from the last 7 days, and exits 3. If the steps do not help, send those two lines to the person who gave you Scholar.
+
+Exit 3 means the problem is on your Mac, in the page Google returned, or in a place Scholar could not identify:
+
+- The browser engine stopped while loading the page: quit apps you are not using and search again, restart your Mac if it stops again, install waiting macOS updates, then run `scholar doctor`.
+- No desktop session is available: log in at the Mac itself or through Screen Sharing, run the command from Terminal in that session, then run `scholar doctor`. A remote shell such as SSH is not enough.
+- Scholar could not look inside the page: search again, send the details line to the person who gave you Scholar if it fails again, then run `scholar doctor`.
+- Scholar could not turn the results into the output you asked for: search again with the default table output, then run `scholar doctor`.
+- Scholar could not write its output: check that the disk has free space and that you can save in the target folder, run the command again, then run `scholar doctor`.
+- Scholar could not read the results on the page Google returned: wait a few minutes and search again. If it keeps failing, Google may have changed its page, so send the details line to the person who gave you Scholar.
+
+Exit 4 means the problem is with Google or your network:
+
+- Google wants to check that a person is searching, or wants you to accept its consent terms: run the search again with `--headed` and a timeout of at least 120000 ms, finish the check in the window, and wait before searching again if Google still blocks you.
+- Google's check was not finished before the time limit: run the search again with `--headed` and more time, and finish the check as soon as the window opens.
+- Google Scholar is limiting searches from your network: wait an hour or more, then run the search once. Turn off a VPN for that search.
+- Google Scholar returned an error page: wait a few minutes and search again, and check that https://scholar.google.com opens in your web browser.
+- Google Scholar did not finish loading before the time limit: check your internet connection, then search again with a longer `--timeout`.
+- Scholar could not reach Google Scholar: check your internet connection, try without a VPN or proxy, and search again.
+
+Exit 5 means Scholar did not recognise the page as search results before the time limit. Search again with `--headed` to see the page. If the window shows normal results, Google may have changed its page, so tell the person who gave you Scholar.
+
+### Google verification
+
+When Google asks for verification, the error prints the command to run with a visible window and a longer timeout. For example:
+
+```sh
+./scholar search --headed --timeout 120000 -- 'attention is all you need'
 ```
 
 Complete verification in that window. The command reads results when they appear. The timeout includes page loading and verification. Ctrl-C cancels the search and closes the window.
@@ -107,7 +139,8 @@ JSON is an array. CSV has a header, including when there are no results. Import 
 | 3 | Local browser or desktop session failure |
 | 4 | Google verification, consent, restriction, or network failure |
 | 5 | The page could not be read as search results |
-| 130 | Search cancelled |
+| 130 | Search cancelled, or the visible window was closed |
+| 143 | Search terminated by a signal |
 
 Diagnostics use stderr. JSON and CSV output use stdout.
 
