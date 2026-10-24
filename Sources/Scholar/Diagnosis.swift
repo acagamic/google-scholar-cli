@@ -1,4 +1,14 @@
+import CoreGraphics
 import Foundation
+
+/// Returns the no-session failure when this process has no window-server session (for example, over SSH).
+/// Checked before AppKit starts, because AppKit can hang without one.
+func desktopSessionFailure(
+    sessionAvailable: Bool = CGSessionCopyCurrentDictionary() != nil,
+    options: SearchOptions?
+) -> ScholarFailure? {
+    sessionAvailable ? nil : diagnosedFailure(.noDesktopSession, options: options)
+}
 
 /// Every exit 3, 4 and 5 failure the CLI can report. Each cause owns its side, exit code and steps.
 enum FailureCause: CaseIterable {

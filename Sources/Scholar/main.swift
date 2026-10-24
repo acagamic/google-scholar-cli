@@ -49,6 +49,10 @@ private enum ScholarCLI {
             writeDiagnostic("Could not create the search request: \(error.localizedDescription)")
             return 2
         }
+        if let failure = desktopSessionFailure(options: options) {
+            writeDiagnostic(failure.message)
+            return failure.exitCode
+        }
 
         let application = NSApplication.shared
         application.setActivationPolicy(options.headed ? .accessory : .prohibited)

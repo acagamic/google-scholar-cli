@@ -524,6 +524,19 @@ private enum CoreTestRunner {
                 try requireEqual(lines.last, "Details: Google Scholar returned HTTP 429.")
                 try require(message.lowercased().contains("wait"), "Rate limit must ask the person to wait")
             }),
+            ("missing desktop session stops before the browser", {
+                let options = SearchOptions(query: "q")
+                guard let failure = desktopSessionFailure(sessionAvailable: false, options: options) else {
+                    throw TestFailure(description: "A missing session must fail")
+                }
+                try requireEqual(failure.exitCode, 3)
+                try require(failure.message.contains("no desktop session is available"), "Message must name the session")
+                try require(failure.message.contains("scholar doctor"), "Message must end with the doctor step")
+                try require(
+                    desktopSessionFailure(sessionAvailable: true, options: options) == nil,
+                    "A present session must let the run continue"
+                )
+            }),
             ("diagnosis without a search omits the command", {
                 let message = diagnosedFailure(.outputWriteFailed, options: nil).message
                 try require(!message.contains("scholar search"), "No search means no search command")
