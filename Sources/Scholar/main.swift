@@ -74,10 +74,15 @@ private enum ScholarCLI {
             switch result {
             case let .success(rows):
                 do {
-                    exitCode = writeOutput(try formatRows(rows, as: options.format))
+                    exitCode = writeOutput(try formatRows(rows, as: options.format), options: options)
                 } catch {
-                    writeDiagnostic("Could not format output: \(error.localizedDescription)")
-                    exitCode = 3
+                    let failure = diagnosedFailure(
+                        .outputFormatFailed,
+                        options: options,
+                        detail: "Could not format output: \(error.localizedDescription)"
+                    )
+                    writeDiagnostic(failure.message)
+                    exitCode = failure.exitCode
                 }
             case let .failure(failure):
                 writeDiagnostic(failure.message)
@@ -108,13 +113,18 @@ private enum ScholarCLI {
         return exitCode
     }
 
-    private static func writeOutput(_ data: Data) -> Int32 {
+    private static func writeOutput(_ data: Data, options: SearchOptions? = nil) -> Int32 {
         switch write(data, to: STDOUT_FILENO) {
         case .written, .brokenPipe:
             return 0
         case let .failed(errorNumber):
-            writeDiagnostic("Could not write output: \(String(cString: strerror(errorNumber)))")
-            return 3
+            let failure = diagnosedFailure(
+                .outputWriteFailed,
+                options: options,
+                detail: "Could not write output: \(String(cString: strerror(errorNumber)))"
+            )
+            writeDiagnostic(failure.message)
+            return failure.exitCode
         }
     }
 

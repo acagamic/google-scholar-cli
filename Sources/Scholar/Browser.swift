@@ -59,7 +59,11 @@ final class ScholarBrowser: NSObject, NSWindowDelegate, WKNavigationDelegate {
             finalize(.failure(failure))
             return
         } catch {
-            finalize(.failure(localFailure("Could not validate the browser session.")))
+            finalize(.failure(diagnosedFailure(
+                .pageNotInspectable,
+                options: options,
+                detail: "Could not validate the browser session: \(error.localizedDescription)"
+            )))
             return
         }
         let timeoutNanoseconds = UInt64(options.timeout * 1_000_000_000)
@@ -153,11 +157,13 @@ final class ScholarBrowser: NSObject, NSWindowDelegate, WKNavigationDelegate {
             return
         }
 
-        let failure = ScholarFailure(
-            message: "Google Scholar returned HTTP \(response.statusCode).",
-            exitCode: 4
+        let limited = response.statusCode == 403 || response.statusCode == 429
+        let failure = diagnosedFailure(
+            limited ? .rateLimited : .googleError,
+            options: options,
+            detail: "Google Scholar returned HTTP \(response.statusCode)."
         )
-        if response.statusCode == 403 || response.statusCode == 429 {
+        if limited {
             pendingHTTPFailure = failure
             decisionHandler(.allow)
         } else {
@@ -191,7 +197,11 @@ final class ScholarBrowser: NSObject, NSWindowDelegate, WKNavigationDelegate {
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        finalize(.failure(localFailure("The WebKit content process exited unexpectedly.")))
+        finalize(.failure(diagnosedFailure(
+            .browserCrashed,
+            options: options,
+            detail: "The WebKit content process exited unexpectedly."
+        )))
     }
 
     private func timerTick() {
@@ -231,15 +241,19 @@ final class ScholarBrowser: NSObject, NSWindowDelegate, WKNavigationDelegate {
             }
 
             if let error {
-                self.finalize(.failure(self.localFailure(
-                    "Could not inspect the loaded page: \(error.localizedDescription)"
+                self.finalize(.failure(diagnosedFailure(
+                    .pageNotInspectable,
+                    options: self.options,
+                    detail: "Could not inspect the loaded page: \(error.localizedDescription)"
                 )))
                 return
             }
             guard let json = value as? String,
                   let data = json.data(using: .utf8) else {
-                self.finalize(.failure(self.localFailure(
-                    "The loaded page returned an invalid extraction result."
+                self.finalize(.failure(diagnosedFailure(
+                    .pageUnreadable,
+                    options: self.options,
+                    detail: "The loaded page returned an invalid extraction result."
                 )))
                 return
             }
@@ -248,8 +262,10 @@ final class ScholarBrowser: NSObject, NSWindowDelegate, WKNavigationDelegate {
                 let snapshot = try JSONDecoder().decode(PageSnapshot.self, from: data)
                 self.handle(snapshot)
             } catch {
-                self.finalize(.failure(self.localFailure(
-                    "Could not decode the loaded page: \(error.localizedDescription)"
+                self.finalize(.failure(diagnosedFailure(
+                    .pageUnreadable,
+                    options: self.options,
+                    detail: "Could not decode the loaded page: \(error.localizedDescription)"
                 )))
             }
         }
@@ -285,38 +301,27 @@ final class ScholarBrowser: NSObject, NSWindowDelegate, WKNavigationDelegate {
 
     private func handleManualPage(kind: String) {
         guard options.headed else {
-            finalize(.failure(ScholarFailure(
-                message: "Google Scholar requested \(kind). Run again with --headed --timeout 120000 to complete it manually.",
-                exitCode: 4
+            finalize(.failure(diagnosedFailure(
+                kind == "consent" ? .consentRequested : .verificationRequested,
+                options: options
             )))
             return
         }
 
         if !showedManualDiagnostic {
             showedManualDiagnostic = true
-            diagnosticHandler(
-                "Google Scholar requested \(kind). Complete it in the Scholar Search window before the deadline."
-            )
+            diagnosticHandler(manualCheckProgress(kind: kind))
         }
     }
 
     private func finishForDeadline() {
         switch lastPageState {
         case "challenge", "consent":
-            finalize(.failure(ScholarFailure(
-                message: "Google Scholar verification or consent was not completed before the deadline.",
-                exitCode: 4
-            )))
+            finalize(.failure(diagnosedFailure(.verificationTimedOut, options: options)))
         case nil:
-            finalize(.failure(ScholarFailure(
-                message: "Google Scholar did not finish loading before the deadline.",
-                exitCode: 4
-            )))
+            finalize(.failure(pendingHTTPFailure ?? diagnosedFailure(.loadTimedOut, options: options)))
         default:
-            finalize(.failure(ScholarFailure(
-                message: "Could not recognise the Google Scholar page before the deadline.",
-                exitCode: 5
-            )))
+            finalize(.failure(pendingHTTPFailure ?? diagnosedFailure(.pageNotRecognised, options: options)))
         }
     }
 
@@ -329,14 +334,11 @@ final class ScholarBrowser: NSObject, NSWindowDelegate, WKNavigationDelegate {
            nsError.code == NSURLErrorCancelled {
             return
         }
-        finalize(.failure(ScholarFailure(
-            message: "Google Scholar network request failed: \(error.localizedDescription)",
-            exitCode: 4
+        finalize(.failure(diagnosedFailure(
+            .networkFailed,
+            options: options,
+            detail: error.localizedDescription
         )))
-    }
-
-    private func localFailure(_ message: String) -> ScholarFailure {
-        ScholarFailure(message: message, exitCode: 3)
     }
 
     private func finalize(_ result: Result<[ScholarRow], ScholarFailure>) {
