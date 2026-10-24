@@ -407,6 +407,127 @@ private enum CoreTestRunner {
                 try require(table.contains("Ada Example"), "Table must flatten line breaks")
                 try require(table.contains("Journal A"), "Table must flatten tabs")
             }),
+            ("diagnosis first lines are plain and name a side", {
+                let options = SearchOptions(query: "query")
+                let banned = ["webkit", "content process", "http", "javascript", "extraction", "decode"]
+                for cause in FailureCause.allCases {
+                    let message = diagnosedFailure(cause, options: options, detail: "HTTP 503").message
+                    let firstLine = message.components(separatedBy: "\n")[0].lowercased()
+                    for term in banned {
+                        try require(!firstLine.contains(term), "\(cause) first line must not say \(term)")
+                    }
+                    try require(
+                        firstLine.contains("your mac") || firstLine.contains("google")
+                            || firstLine.contains("network") || firstLine.contains("page"),
+                        "\(cause) first line must name a side"
+                    )
+                }
+            }),
+            ("diagnosis exit codes follow the cause table", {
+                let expected: [FailureCause: Int32] = [
+                    .browserCrashed: 3, .noDesktopSession: 3, .pageNotInspectable: 3,
+                    .pageUnreadable: 3, .outputFormatFailed: 3, .outputWriteFailed: 3,
+                    .verificationRequested: 4, .consentRequested: 4, .verificationTimedOut: 4,
+                    .rateLimited: 4, .googleError: 4, .loadTimedOut: 4, .networkFailed: 4,
+                    .pageNotRecognised: 5,
+                ]
+                try requireEqual(expected.count, FailureCause.allCases.count)
+                for (cause, code) in expected {
+                    try requireEqual(diagnosedFailure(cause, options: nil).exitCode, code, "\(cause)")
+                }
+            }),
+            ("diagnosis steps are numbered and at most five", {
+                for cause in FailureCause.allCases {
+                    for options in [SearchOptions(query: "query"), nil] {
+                        let lines = diagnosedFailure(cause, options: options).message
+                            .components(separatedBy: "\n")
+                        let steps = lines.filter { $0.range(of: #"^\d+\. "#, options: .regularExpression) != nil }
+                        try require((1...5).contains(steps.count), "\(cause) must have 1-5 steps, has \(steps.count)")
+                        for (index, step) in steps.enumerated() {
+                            try require(step.hasPrefix("\(index + 1). "), "\(cause) steps must be numbered in order")
+                        }
+                    }
+                }
+            }),
+            ("diagnosis doctor step ends Mac-side failures only", {
+                let doctorCauses: Set<FailureCause> = [
+                    .browserCrashed, .noDesktopSession, .pageNotInspectable,
+                    .outputFormatFailed, .outputWriteFailed,
+                ]
+                for cause in FailureCause.allCases {
+                    let steps = diagnosedFailure(cause, options: SearchOptions(query: "query")).message
+                        .components(separatedBy: "\n")
+                        .filter { $0.range(of: #"^\d+\. "#, options: .regularExpression) != nil }
+                    let endsWithDoctor = steps.last?.contains("scholar doctor") ?? false
+                    try requireEqual(endsWithDoctor, doctorCauses.contains(cause), "\(cause) doctor step")
+                }
+            }),
+            ("diagnosis rebuilds the person's command", {
+                let options = SearchOptions(query: "graph neural networks", limit: 5, lang: "zh-CN")
+                let message = diagnosedFailure(.browserCrashed, options: options).message
+                try require(
+                    message.contains("scholar search --limit 5 --lang zh-CN -- 'graph neural networks'"),
+                    "Command must keep the person's options: \(message)"
+                )
+                try requireEqual(
+                    scholarCommand(for: SearchOptions(query: "plain")),
+                    "scholar search -- 'plain'"
+                )
+                try requireEqual(
+                    scholarCommand(for: SearchOptions(query: "q", format: .csv, timeout: 45, headed: true)),
+                    "scholar search --format csv --headed --timeout 45000 -- 'q'"
+                )
+            }),
+            ("diagnosis quotes awkward queries for the shell", {
+                let query = "Shneiderman's $HOME 注意力"
+                try requireEqual(
+                    scholarCommand(for: SearchOptions(query: query)),
+                    "scholar search -- 'Shneiderman'\\''s $HOME 注意力'"
+                )
+            }),
+            ("diagnosis verification step uses a long enough timeout", {
+                let short = diagnosedFailure(
+                    .verificationRequested,
+                    options: SearchOptions(query: "attention is all you need", limit: 5, timeout: 20)
+                ).message
+                try require(
+                    short.contains("scholar search --limit 5 --headed --timeout 120000 -- 'attention is all you need'"),
+                    "A short timeout must grow to 120000 ms: \(short)"
+                )
+                let long = diagnosedFailure(
+                    .verificationRequested,
+                    options: SearchOptions(query: "q", timeout: 180)
+                ).message
+                try require(
+                    long.contains("scholar search --headed --timeout 180000 -- 'q'"),
+                    "A longer own timeout must be kept: \(long)"
+                )
+            }),
+            ("diagnosis never repeats a headed command that timed out", {
+                let options = SearchOptions(query: "q", timeout: 120, headed: true)
+                let message = diagnosedFailure(.verificationTimedOut, options: options).message
+                try require(
+                    !message.contains(scholarCommand(for: options) + "\n"),
+                    "Steps must not repeat the identical command: \(message)"
+                )
+                try require(message.contains("--headed --timeout 240000"), "Steps must allow more time: \(message)")
+            }),
+            ("diagnosis keeps technical detail on the last line", {
+                let message = diagnosedFailure(
+                    .rateLimited,
+                    options: SearchOptions(query: "q"),
+                    detail: "Google Scholar returned HTTP 429."
+                ).message
+                let lines = message.components(separatedBy: "\n")
+                try require(lines[0].contains("Google"), "Rate limit must name Google")
+                try require(!lines[0].contains("429"), "Status code must stay off the first line")
+                try requireEqual(lines.last, "Details: Google Scholar returned HTTP 429.")
+                try require(message.lowercased().contains("wait"), "Rate limit must ask the person to wait")
+            }),
+            ("diagnosis without a search omits the command", {
+                let message = diagnosedFailure(.outputWriteFailed, options: nil).message
+                try require(!message.contains("scholar search"), "No search means no search command")
+            }),
         ]
 
         var failures = 0

@@ -23,6 +23,7 @@ mkdir -p "$build_directory"
   -warnings-as-errors \
   -framework AppKit \
   -framework WebKit \
+  "$repository_root/Sources/Scholar/Diagnosis.swift" \
   "$repository_root/Sources/Scholar/Models.swift" \
   "$repository_root/Sources/Scholar/Options.swift" \
   "$repository_root/Sources/Scholar/Output.swift" \
