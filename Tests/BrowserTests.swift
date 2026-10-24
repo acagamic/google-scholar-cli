@@ -561,6 +561,7 @@ private enum BrowserTestRunner {
                 let report = try runDoctorForTest(makeDoctorBrowser())
                 try requireEqual(report.exitCode, 0)
                 try require(report.stdout.contains("browser engine works"), "Pass must be plain: \(report.stdout)")
+                try require(!report.stdout.contains("Google or your network"), "Pass must not blame a side doctor never checked")
                 try requireEqual(report.stderr, "")
             }),
             ("doctor fails plainly when the page cannot be read", {
@@ -576,6 +577,7 @@ private enum BrowserTestRunner {
                 try require(report.stderr.hasPrefix("This is a problem on your Mac, not with Google"), report.stderr)
                 try require(report.stderr.contains("macOS: "), "Fail must print the macOS version")
                 try require(report.stderr.contains("Crash report: "), "Fail must print the crash report line")
+                try require(!report.stderr.contains("not your Mac"), "Fail details must not contradict the Mac verdict: \(report.stderr)")
             }),
             ("doctor picks the newest recent WebKit crash report", {
                 let directory = FileManager.default.temporaryDirectory

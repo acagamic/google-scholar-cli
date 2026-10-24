@@ -80,7 +80,7 @@ private func doctorReport(
             exitCode: 0,
             stdout: """
             Your Mac's browser engine works: Scholar loaded and read its built-in test page without contacting Google.
-            If a search still fails, follow the steps printed with that error; the cause is with Google or your network.
+            This check covers only the browser engine. If a search still fails, follow the steps printed with that error.
 
             """,
             stderr: ""
@@ -91,7 +91,8 @@ private func doctorReport(
         return DoctorReport(exitCode: failure.exitCode, stdout: "", stderr: failure.message + "\n")
     case let .failure(failure):
         let lines = failure.message.components(separatedBy: "\n")
-        failureDetail = lines.last { $0.hasPrefix(detailsPrefix) }.map { String($0.dropFirst(detailsPrefix.count)) } ?? lines[0]
+        failureDetail = lines.last { $0.hasPrefix(detailsPrefix) }.map { String($0.dropFirst(detailsPrefix.count)) }
+            ?? "The built-in test page did not finish loading, or Scholar could not read it, before the time limit."
     }
 
     let crashReport = newestCrashReport(in: reportsDirectory)?.path ?? "none found"

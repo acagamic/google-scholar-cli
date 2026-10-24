@@ -108,7 +108,7 @@ private func shellQuoted(_ value: String) -> String {
 
 private func step(_ text: String, command: String?) -> String {
     guard let command else {
-        return text
+        return text.hasSuffix(":") ? String(text.dropLast()) + "." : text
     }
     return "\(text)\n   \(command)"
 }

@@ -546,8 +546,13 @@ private enum CoreTestRunner {
                 )
             }),
             ("diagnosis without a search omits the command", {
-                let message = diagnosedFailure(.outputWriteFailed, options: nil).message
-                try require(!message.contains("scholar search"), "No search means no search command")
+                for cause in FailureCause.allCases {
+                    let message = diagnosedFailure(cause, options: nil).message
+                    try require(!message.contains("scholar search"), "\(cause): no search means no search command")
+                    for line in message.components(separatedBy: "\n") where line != "What to do:" {
+                        try require(!line.hasSuffix(":"), "\(cause): step promises a missing command: \(line)")
+                    }
+                }
             }),
         ]
 
