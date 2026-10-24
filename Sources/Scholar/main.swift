@@ -109,7 +109,6 @@ private enum ScholarCLI {
         return written == 0 ? report.exitCode : written
     }
 
-    /// Runs the AppKit loop until `start` calls its finish callback; SIGINT and SIGTERM cancel the browser.
     private static func runUntilFinished(
         _ browser: ScholarBrowser,
         activation: NSApplication.ActivationPolicy,

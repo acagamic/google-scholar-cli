@@ -300,17 +300,15 @@ final class ScholarBrowser: NSObject, NSWindowDelegate, WKNavigationDelegate {
     }
 
     private func handleManualPage(kind: String) {
+        let cause: FailureCause = kind == "consent" ? .consentRequested : .verificationRequested
         guard options.headed else {
-            finalize(.failure(diagnosedFailure(
-                kind == "consent" ? .consentRequested : .verificationRequested,
-                options: options
-            )))
+            finalize(.failure(diagnosedFailure(cause, options: options)))
             return
         }
 
         if !showedManualDiagnostic {
             showedManualDiagnostic = true
-            diagnosticHandler(manualCheckProgress(kind: kind))
+            diagnosticHandler(manualCheckProgress(cause))
         }
     }
 

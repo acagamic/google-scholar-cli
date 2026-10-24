@@ -65,7 +65,6 @@ func startDoctor(
     }
 }
 
-/// The report `scholar doctor` prints when no desktop session exists, with the macOS version for the maintainer.
 func doctorSessionReport(_ failure: ScholarFailure) -> DoctorReport {
     DoctorReport(exitCode: failure.exitCode, stdout: "", stderr: "\(failure.message)\nmacOS: \(macOSVersion)\n")
 }
@@ -92,7 +91,7 @@ private func doctorReport(
         return DoctorReport(exitCode: failure.exitCode, stdout: "", stderr: failure.message + "\n")
     case let .failure(failure):
         let lines = failure.message.components(separatedBy: "\n")
-        failureDetail = lines.last { $0.hasPrefix("Details: ") }.map { String($0.dropFirst(9)) } ?? lines[0]
+        failureDetail = lines.last { $0.hasPrefix(detailsPrefix) }.map { String($0.dropFirst(detailsPrefix.count)) } ?? lines[0]
     }
 
     let crashReport = newestCrashReport(in: reportsDirectory)?.path ?? "none found"
@@ -118,7 +117,6 @@ private var macOSVersion: String {
 let defaultCrashReportsDirectory = FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent("Library/Logs/DiagnosticReports")
 
-/// The newest WebKit or Scholar crash report changed in the last 7 days, if any.
 func newestCrashReport(in directory: URL, now: Date = Date()) -> URL? {
     let prefixes = ["com.apple.WebKit", "WebContent", "scholar"]
     let oldest = now.addingTimeInterval(-7 * 86_400)
