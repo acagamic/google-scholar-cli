@@ -33,6 +33,8 @@ private enum ScholarCLI {
             return writeOutput(Data((scholarHelp + desktopNote + "\n").utf8))
         case .version:
             return writeOutput(Data("scholar \(scholarVersion)\n".utf8))
+        case .doctor:
+            return runDoctor()
         case let .search(options):
             return runSearch(options)
         }
@@ -54,11 +56,67 @@ private enum ScholarCLI {
             return failure.exitCode
         }
 
-        let application = NSApplication.shared
-        application.setActivationPolicy(options.headed ? .accessory : .prohibited)
-
         let browser = ScholarBrowser(options: options, request: request)
         var exitCode: Int32 = 3
+        runUntilFinished(browser, activation: options.headed ? .accessory : .prohibited) { finish in
+            browser.start { result in
+                switch result {
+                case let .success(rows):
+                    do {
+                        exitCode = writeOutput(try formatRows(rows, as: options.format), options: options)
+                    } catch {
+                        let failure = diagnosedFailure(
+                            .outputFormatFailed,
+                            options: options,
+                            detail: "Could not format output: \(error.localizedDescription)"
+                        )
+                        writeDiagnostic(failure.message)
+                        exitCode = failure.exitCode
+                    }
+                case let .failure(failure):
+                    writeDiagnostic(failure.message)
+                    exitCode = failure.exitCode
+                }
+                finish()
+            }
+        }
+        return exitCode
+    }
+
+    private static func runDoctor() -> Int32 {
+        if let failure = desktopSessionFailure(options: nil) {
+            return writeReport(doctorSessionReport(failure))
+        }
+        let browser = makeDoctorBrowser()
+        var exitCode: Int32 = 3
+        runUntilFinished(browser, activation: .prohibited) { finish in
+            startDoctor(browser) { report in
+                exitCode = writeReport(report)
+                finish()
+            }
+        }
+        return exitCode
+    }
+
+    private static func writeReport(_ report: DoctorReport) -> Int32 {
+        if !report.stderr.isEmpty {
+            _ = write(Data(report.stderr.utf8), to: STDERR_FILENO)
+        }
+        guard !report.stdout.isEmpty else {
+            return report.exitCode
+        }
+        let written = writeOutput(Data(report.stdout.utf8))
+        return written == 0 ? report.exitCode : written
+    }
+
+    /// Runs the AppKit loop until `start` calls its finish callback; SIGINT and SIGTERM cancel the browser.
+    private static func runUntilFinished(
+        _ browser: ScholarBrowser,
+        activation: NSApplication.ActivationPolicy,
+        start: (_ finish: @escaping () -> Void) -> Void
+    ) {
+        let application = NSApplication.shared
+        application.setActivationPolicy(activation)
         var completed = false
 
         Darwin.signal(SIGINT, SIG_IGN)
@@ -74,24 +132,7 @@ private enum ScholarCLI {
         interruptSource.resume()
         terminateSource.resume()
 
-        browser.start { result in
-            switch result {
-            case let .success(rows):
-                do {
-                    exitCode = writeOutput(try formatRows(rows, as: options.format), options: options)
-                } catch {
-                    let failure = diagnosedFailure(
-                        .outputFormatFailed,
-                        options: options,
-                        detail: "Could not format output: \(error.localizedDescription)"
-                    )
-                    writeDiagnostic(failure.message)
-                    exitCode = failure.exitCode
-                }
-            case let .failure(failure):
-                writeDiagnostic(failure.message)
-                exitCode = failure.exitCode
-            }
+        start {
             completed = true
             application.stop(nil)
             if let wakeEvent = NSEvent.otherEvent(
@@ -114,7 +155,6 @@ private enum ScholarCLI {
         }
         interruptSource.cancel()
         terminateSource.cancel()
-        return exitCode
     }
 
     private static func writeOutput(_ data: Data, options: SearchOptions? = nil) -> Int32 {

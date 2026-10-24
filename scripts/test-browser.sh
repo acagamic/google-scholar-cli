@@ -25,6 +25,7 @@ common_sources=(
   "$repository_root/Sources/Scholar/Output.swift"
   "$repository_root/Sources/Scholar/Parser.swift"
   "$repository_root/Sources/Scholar/Browser.swift"
+  "$repository_root/Sources/Scholar/Doctor.swift"
 )
 
 /usr/bin/swiftc \
@@ -66,4 +67,7 @@ set -e
 set -o pipefail
 "$cli_binary" --help | /usr/bin/true
 
-print "PASS CLI help, version, invalid arguments, and closed pipe"
+doctor_output=$("$cli_binary" doctor)
+[[ "$doctor_output" == *"browser engine works"* ]]
+
+print "PASS CLI help, version, invalid arguments, closed pipe, and doctor"

@@ -243,6 +243,19 @@ private func runServer(statusCode: Int, reason: String, body: String) throws -> 
     return result
 }
 
+private func runDoctorForTest(_ browser: ScholarBrowser) throws -> DoctorReport {
+    var report: DoctorReport?
+    startDoctor(browser) { report = $0 }
+    let deadline = Date().addingTimeInterval(20)
+    while report == nil, Date() < deadline {
+        _ = RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+    }
+    guard let report else {
+        throw TestFailure(description: "Doctor did not finish")
+    }
+    return report
+}
+
 private func requireRows(
     _ result: Result<[ScholarRow], ScholarFailure>,
     count: Int
@@ -543,6 +556,53 @@ private enum BrowserTestRunner {
                     throw TestFailure(description: "NSApplication.run did not return after completion")
                 }
                 _ = try requireRows(result, count: 0)
+            }),
+            ("doctor passes on the built-in page", {
+                let report = try runDoctorForTest(makeDoctorBrowser())
+                try requireEqual(report.exitCode, 0)
+                try require(report.stdout.contains("browser engine works"), "Pass must be plain: \(report.stdout)")
+                try requireEqual(report.stderr, "")
+            }),
+            ("doctor fails plainly when the page cannot be read", {
+                let configuration = WKWebViewConfiguration()
+                configuration.setURLSchemeHandler(
+                    FixtureSchemeHandler(reply: .html(try fixtureHTML("unknown.html"))),
+                    forURLScheme: doctorURLScheme
+                )
+                let browser = makeDoctorBrowser(configuration: configuration, timeout: 0.3)
+                let report = try runDoctorForTest(browser)
+                try requireEqual(report.exitCode, 3)
+                try requireEqual(report.stdout, "")
+                try require(report.stderr.hasPrefix("This is a problem on your Mac, not with Google"), report.stderr)
+                try require(report.stderr.contains("macOS: "), "Fail must print the macOS version")
+                try require(report.stderr.contains("Crash report: "), "Fail must print the crash report line")
+            }),
+            ("doctor picks the newest recent WebKit crash report", {
+                let directory = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("doctor-\(UUID().uuidString)")
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                defer { try? FileManager.default.removeItem(at: directory) }
+                try requireEqual(newestCrashReport(in: directory), nil)
+
+                let now = Date()
+                let files: [(String, TimeInterval)] = [
+                    ("com.apple.WebKit.WebContent-2026-10-20.ips", -3 * 86_400),
+                    ("com.apple.WebKit.WebContent-2026-10-22.ips", -86_400),
+                    ("ExcUserFault_textunderstandingd-2026-10-23.ips", -60),
+                    ("scholar-2026-10-01.crash", -20 * 86_400),
+                ]
+                for (name, age) in files {
+                    let url = directory.appendingPathComponent(name)
+                    try Data().write(to: url)
+                    try FileManager.default.setAttributes(
+                        [.modificationDate: now.addingTimeInterval(age)],
+                        ofItemAtPath: url.path
+                    )
+                }
+                try requireEqual(
+                    newestCrashReport(in: directory, now: now)?.lastPathComponent,
+                    "com.apple.WebKit.WebContent-2026-10-22.ips"
+                )
             }),
         ]
 

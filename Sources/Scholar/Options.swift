@@ -5,6 +5,7 @@ let scholarVersion = "0.1.0"
 let scholarHelp = """
 Usage:
   scholar search <query> [options]
+  scholar doctor          Check this Mac's browser engine without contacting Google
   scholar --help
   scholar --version
 
@@ -27,7 +28,8 @@ Exit codes:
   3    Local browser or session failure
   4    Service or network failure
   5    Unreadable page
-  130  Interrupted
+  130  Interrupted or window closed
+  143  Terminated
 """
 
 func parseArguments(_ args: [String]) throws -> CLIAction {
@@ -41,9 +43,15 @@ func parseArguments(_ args: [String]) throws -> CLIAction {
             return .help
         case "--version", "-V":
             return .version
+        case "doctor":
+            return .doctor
         default:
             break
         }
+    }
+
+    if command == "doctor" {
+        throw argumentFailure("scholar doctor takes no arguments. Run scholar doctor on its own.")
     }
 
     guard command == "search" else {

@@ -524,6 +524,14 @@ private enum CoreTestRunner {
                 try requireEqual(lines.last, "Details: Google Scholar returned HTTP 429.")
                 try require(message.lowercased().contains("wait"), "Rate limit must ask the person to wait")
             }),
+            ("parse doctor without arguments", {
+                guard case .doctor = try parseArguments(["doctor"]) else {
+                    throw TestFailure(description: "Expected the doctor action")
+                }
+                try expectArgumentFailure(["doctor", "extra"])
+                try require(scholarHelp.contains("scholar doctor"), "Help must list doctor")
+                try require(scholarHelp.contains("143  Terminated"), "Help must list exit 143")
+            }),
             ("missing desktop session stops before the browser", {
                 let options = SearchOptions(query: "q")
                 guard let failure = desktopSessionFailure(sessionAvailable: false, options: options) else {
