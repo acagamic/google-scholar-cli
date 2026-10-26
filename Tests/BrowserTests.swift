@@ -223,6 +223,39 @@ private func runBrowser(
     return result
 }
 
+/// Runs a hidden search against a one-request local server that answers with a real HTTP status.
+private func runServer(statusCode: Int, reason: String, body: String) throws -> Result<[ScholarRow], ScholarFailure> {
+    let server = try OneRequestHTTPServer(statusCode: statusCode, reason: reason, body: body)
+    let browser = ScholarBrowser(
+        options: SearchOptions(query: "fixture", timeout: 2),
+        request: URLRequest(url: server.url),
+        diagnosticHandler: { _ in }
+    )
+    var result: Result<[ScholarRow], ScholarFailure>?
+    browser.start { result = $0 }
+    let deadline = Date().addingTimeInterval(3)
+    while result == nil, Date() < deadline {
+        _ = RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+    }
+    guard let result else {
+        throw TestFailure(description: "HTTP status test did not complete")
+    }
+    return result
+}
+
+private func runDoctorForTest(_ browser: ScholarBrowser) throws -> DoctorReport {
+    var report: DoctorReport?
+    startDoctor(browser) { report = $0 }
+    let deadline = Date().addingTimeInterval(20)
+    while report == nil, Date() < deadline {
+        _ = RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+    }
+    guard let report else {
+        throw TestFailure(description: "Doctor did not finish")
+    }
+    return report
+}
+
 private func requireRows(
     _ result: Result<[ScholarRow], ScholarFailure>,
     count: Int
@@ -277,6 +310,8 @@ private enum BrowserTestRunner {
             ("hidden challenge fails with recovery", {
                 let result = try runBrowser(reply: .html(try fixtureHTML("challenge.html")))
                 try requireFailure(result, exitCode: 4, containing: "--headed")
+                try requireFailure(result, exitCode: 4, containing: "This is on Google's side, not your Mac")
+                try requireFailure(result, exitCode: 4, containing: "scholar search --headed --timeout 120000 -- 'fixture'")
                 if case let .failure(failure) = result {
                     try require(failure.message.contains("120000"), "Recovery must suggest a longer timeout")
                 }
@@ -307,6 +342,10 @@ private enum BrowserTestRunner {
                 )
                 _ = try requireRows(result, count: 2)
                 try requireEqual(diagnostics.count, 1)
+                try require(
+                    diagnostics[0].contains("Finish it in the Scholar Search window"),
+                    "Progress line must use plain language: \(diagnostics[0])"
+                )
             }),
             ("headed rate-limit challenge can change to results", {
                 let resultHTML = try fixtureHTML("results.html")
@@ -348,42 +387,40 @@ private enum BrowserTestRunner {
                 _ = try requireRows(result, count: 1)
             }),
             ("other main-frame HTTP error fails", {
-                let server = try OneRequestHTTPServer(
-                    statusCode: 503,
-                    reason: "Service Unavailable",
-                    body: "service unavailable"
-                )
-                let options = SearchOptions(query: "fixture", timeout: 2)
-                let browser = ScholarBrowser(
-                    options: options,
-                    request: URLRequest(url: server.url),
-                    diagnosticHandler: { _ in }
-                )
-                var result: Result<[ScholarRow], ScholarFailure>?
-                browser.start { result = $0 }
-                let deadline = Date().addingTimeInterval(3)
-                while result == nil, Date() < deadline {
-                    _ = RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
-                }
-                guard let result else {
-                    throw TestFailure(description: "HTTP status test did not complete")
-                }
-                try requireFailure(result, exitCode: 4, containing: "HTTP 503")
+                let result = try runServer(statusCode: 503, reason: "Service Unavailable", body: "service unavailable")
+                try requireFailure(result, exitCode: 4, containing: "Details: Google Scholar returned HTTP 503.")
+                try requireFailure(result, exitCode: 4, containing: "returned an error page")
+            }),
+            ("rate limit on an ordinary page names the limit", {
+                let result = try runServer(statusCode: 429, reason: "Too Many Requests", body: try fixtureHTML("unknown.html"))
+                try requireFailure(result, exitCode: 4, containing: "limiting searches")
+                try requireFailure(result, exitCode: 4, containing: "Details: Google Scholar returned HTTP 429.")
+            }),
+            ("rate limit on a challenge page asks for verification", {
+                let result = try runServer(statusCode: 429, reason: "Too Many Requests", body: try fixtureHTML("challenge.html"))
+                try requireFailure(result, exitCode: 4, containing: "check that a person is searching")
+            }),
+            ("browser engine crash points to doctor", {
+                let result = try runBrowser(reply: .unfinished, timeout: 2, action: { browser in
+                    browser.webViewWebContentProcessDidTerminate(WKWebView())
+                })
+                try requireFailure(result, exitCode: 3, containing: "This is a problem on your Mac, not with Google")
+                try requireFailure(result, exitCode: 3, containing: "scholar doctor")
             }),
             ("unknown page expires as unreadable", {
                 let result = try runBrowser(
                     reply: .html(try fixtureHTML("unknown.html")),
                     timeout: 0.2
                 )
-                try requireFailure(result, exitCode: 5, containing: "recognise")
+                try requireFailure(result, exitCode: 5, containing: "did not recognise it as search results")
             }),
             ("unfinished load expires as service failure", {
                 let result = try runBrowser(reply: .unfinished, timeout: 0.2)
-                try requireFailure(result, exitCode: 4, containing: "deadline")
+                try requireFailure(result, exitCode: 4, containing: "did not finish loading before the time limit")
             }),
             ("network failure uses service exit", {
                 let result = try runBrowser(reply: .failure)
-                try requireFailure(result, exitCode: 4, containing: "network")
+                try requireFailure(result, exitCode: 4, containing: "This is a network problem")
             }),
             ("subframe rate limit does not fail results", {
                 let html = """
@@ -519,6 +556,55 @@ private enum BrowserTestRunner {
                     throw TestFailure(description: "NSApplication.run did not return after completion")
                 }
                 _ = try requireRows(result, count: 0)
+            }),
+            ("doctor passes on the built-in page", {
+                let report = try runDoctorForTest(makeDoctorBrowser())
+                try requireEqual(report.exitCode, 0)
+                try require(report.stdout.contains("browser engine works"), "Pass must be plain: \(report.stdout)")
+                try require(!report.stdout.contains("Google or your network"), "Pass must not blame a side doctor never checked")
+                try requireEqual(report.stderr, "")
+            }),
+            ("doctor fails plainly when the page cannot be read", {
+                let configuration = WKWebViewConfiguration()
+                configuration.setURLSchemeHandler(
+                    FixtureSchemeHandler(reply: .html(try fixtureHTML("unknown.html"))),
+                    forURLScheme: doctorURLScheme
+                )
+                let browser = makeDoctorBrowser(configuration: configuration, timeout: 0.3)
+                let report = try runDoctorForTest(browser)
+                try requireEqual(report.exitCode, 3)
+                try requireEqual(report.stdout, "")
+                try require(report.stderr.hasPrefix("This is a problem on your Mac, not with Google"), report.stderr)
+                try require(report.stderr.contains("macOS: "), "Fail must print the macOS version")
+                try require(report.stderr.contains("Crash report: "), "Fail must print the crash report line")
+                try require(!report.stderr.contains("not your Mac"), "Fail details must not contradict the Mac verdict: \(report.stderr)")
+            }),
+            ("doctor picks the newest recent WebKit crash report", {
+                let directory = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("doctor-\(UUID().uuidString)")
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                defer { try? FileManager.default.removeItem(at: directory) }
+                try requireEqual(newestCrashReport(in: directory), nil)
+
+                let now = Date()
+                let files: [(String, TimeInterval)] = [
+                    ("com.apple.WebKit.WebContent-2026-10-20.ips", -3 * 86_400),
+                    ("com.apple.WebKit.WebContent-2026-10-22.ips", -86_400),
+                    ("ExcUserFault_textunderstandingd-2026-10-23.ips", -60),
+                    ("scholar-2026-10-01.crash", -20 * 86_400),
+                ]
+                for (name, age) in files {
+                    let url = directory.appendingPathComponent(name)
+                    try Data().write(to: url)
+                    try FileManager.default.setAttributes(
+                        [.modificationDate: now.addingTimeInterval(age)],
+                        ofItemAtPath: url.path
+                    )
+                }
+                try requireEqual(
+                    newestCrashReport(in: directory, now: now)?.lastPathComponent,
+                    "com.apple.WebKit.WebContent-2026-10-22.ips"
+                )
             }),
         ]
 

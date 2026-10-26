@@ -37,3 +37,7 @@ A search after rebuilding reproduced that diagnostic. No successful live Google 
 The development executable has an ad hoc signature. Gatekeeper assessment rejects it. No Developer ID signing or Apple notarization was performed.
 
 The release script checks credentials before building, signs the executable before packaging, and requires acceptance of both ZIPs before publishing public archives. Its help and missing-credential checks pass. The two-archive notarization failure test uses local fixtures and makes no Apple requests.
+
+## Later live result
+
+On October 23, 2026, the same development executable completed a live search with exit 0, and the WebKit failure above did not reproduce. Failures now print a plain diagnosis with numbered steps, and the skill relays that text to the user word for word. See `docs/verification.md`.

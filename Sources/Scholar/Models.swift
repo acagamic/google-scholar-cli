@@ -99,6 +99,7 @@ struct ScholarFailure: Error {
 enum CLIAction {
     case help
     case version
+    case doctor
     case search(SearchOptions)
 }
 

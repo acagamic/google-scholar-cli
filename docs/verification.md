@@ -57,3 +57,13 @@ The final Intel slice then ran the same live query under Rosetta, from the extra
 The code simplification pass retained all proof tests. It removed duplicate language validation and a stored application reference, and deferred a full-page text read until needed for challenge detection.
 
 A clean-context advisor returned SHIP after reviewing the complete implementation and verification evidence. The local deliverable is ready; Developer ID signing and notarization remain prerequisites for a trusted public release.
+
+## Plain failure diagnosis
+
+Verification date: October 24, 2026, on macOS 27.0.1 with Apple Swift 6.4.
+
+`./scripts/test.sh` passes 18 Python tests, 35 core tests, 23 browser tests, and the command smoke checks. The new core tests check every failure cause's first sentence, exit code, step count, `scholar doctor` step, rebuilt command and shell quoting. The new browser tests check request limiting, verification on a 429 page, a simulated WebKit content-process crash, the plain headed-mode progress line, and `scholar doctor` passing and failing. The smoke checks now run `scholar doctor` from the built executable. `Tests/DocsContractTests.py` checks that README.md, SKILL.md and `--help` list the same exit codes.
+
+On October 23, 2026, before these changes, one live search returned three valid records in 4 seconds with exit 0, and no WebKit crash report existed on this Mac. The exit 3 WebKit failure recorded in `docs/skill-verification.md` did not reproduce. On a cold first run, the core suite passed 22 of 23 tests and the browser suite 16 of 17, each failing only on a first-load deadline; an immediate second run passed in full.
+
+`./dist/scholar doctor` exits 0 in about 0.3 seconds and sends no network request, because it loads its page through a built-in URL scheme. The missing-desktop-session check was verified with injected results only; this Mac has no SSH server to test a real remote session.
